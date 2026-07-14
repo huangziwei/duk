@@ -1,4 +1,10 @@
+out/
+.venv/
+__pycache__/
+*.pyc
 .DS_Store
 .claude
+.pytest_cache/
 voices
-out
+scripts
+books/

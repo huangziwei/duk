@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "duk"
+version = "0.1.0"
+description = "Chinese EPUB to M4B pipeline using F5-TTS voice cloning"
+authors = []
+requires-python = "==3.12.*"
+dependencies = [
+    "f5-tts-mlx",
+    "mlx-whisper",
+    "numpy>=1.24",
+    "soundfile>=0.12",
+    "rich>=13.7",
+    "pytest",
+]
+readme = {file = "README.md", content-type = "text/markdown"}
+
+[tool.uv]
+# Apple Silicon (macOS arm64) is the only supported platform (MLX).
+environments = ["sys_platform == 'darwin' and platform_machine == 'arm64'"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["duk"]
