@@ -591,6 +591,8 @@ def _list_voice_ids(repo_root: Path) -> List[str]:
     ids: List[str] = []
     if voices_dir.exists():
         for path in sorted(voices_dir.glob("*.json")):
+            if path.stem == "metadata":
+                continue
             ids.append(path.stem)
         for path in sorted(voices_dir.glob("*/voice.json")):
             ids.append(path.parent.name)
