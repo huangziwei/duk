@@ -9,14 +9,26 @@ description = "Chinese EPUB to M4B pipeline using F5-TTS voice cloning"
 authors = []
 requires-python = "==3.12.*"
 dependencies = [
+    "beautifulsoup4>=4.12",
+    "ebooklib>=0.18",
     "f5-tts-mlx",
+    "fastapi>=0.110",
+    "httpx<1",
+    "jinja2>=3.1",
+    "lxml>=5.0",
     "mlx-whisper",
     "numpy>=1.24",
-    "soundfile>=0.12",
-    "rich>=13.7",
+    "opencc>=1.1.7",
+    "python-multipart>=0.0.9",
     "pytest",
+    "rich>=13.7",
+    "soundfile>=0.12",
+    "uvicorn>=0.27",
 ]
 readme = {file = "README.md", content-type = "text/markdown"}
+
+[project.scripts]
+duk = "duk.cli:main"
 
 [tool.uv]
 # Apple Silicon (macOS arm64) is the only supported platform (MLX).
