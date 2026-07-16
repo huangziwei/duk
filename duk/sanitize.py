@@ -889,7 +889,7 @@ def refresh_chunks(
     max_chars: int = 100,
     pad_ms: int = 350,
     chunk_mode: str = "chinese",
-    min_chars: int = 0,
+    min_chars: int = 15,
 ) -> bool:
     tts_dir = book_dir / "tts"
     tts_cleared = tts_dir.exists()
