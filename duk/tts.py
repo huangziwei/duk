@@ -23,7 +23,7 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
-from . import synth_f5
+from . import synth_qwen
 from . import voice as voice_util
 from .text import (
     SECTION_BREAK,
@@ -2184,7 +2184,7 @@ def synthesize_book(
 
     write_status(out_dir, "loading_model", "Loading TTS model")
 
-    model = synth_f5.get_runtime()
+    model = synth_qwen.get_runtime()
 
     write_status(out_dir, "synthesizing")
 
@@ -2344,7 +2344,7 @@ def synthesize_book(
                     progress.advance(chapter_task, 1)
                     progress.advance(overall_task, 1)
                     continue
-                audio, sample_rate = synth_f5.generate_chunk(
+                audio, sample_rate = synth_qwen.generate_chunk(
                     model, tts_text, voice_config
                 )
                 if audio.size == 0:
@@ -2568,7 +2568,7 @@ def synthesize_chunk(
             voice_id = _normalize_voice_id(entry.get("voice"), default_voice)
 
     config = voice_util.resolve_voice_config(voice=voice_id, base_dir=base_dir)
-    model = synth_f5.get_runtime()
+    model = synth_qwen.get_runtime()
 
     raw_ellipsis_run = _ellipsis_only_run_length(chunk_text)
     pipeline = _prepare_tts_pipeline(chunk_text, add_short_punct=True)
@@ -2612,7 +2612,7 @@ def synthesize_chunk(
             "duration_ms": dms,
         }
 
-    audio, sample_rate = synth_f5.generate_chunk(model, tts_text, config)
+    audio, sample_rate = synth_qwen.generate_chunk(model, tts_text, config)
     if audio.size == 0:
         durations[chunk_index] = 0
         atomic_write_json(manifest_path, manifest)

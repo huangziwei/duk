@@ -5,13 +5,13 @@ build-backend = "hatchling.build"
 [project]
 name = "duk"
 version = "0.1.0"
-description = "Chinese EPUB to M4B pipeline using F5-TTS voice cloning"
+description = "Chinese EPUB to M4B pipeline using Qwen3-TTS voice cloning"
 authors = []
 requires-python = "==3.12.*"
 dependencies = [
     "beautifulsoup4>=4.12",
     "ebooklib>=0.18",
-    "f5-tts-mlx",
+    "mlx-audio[tts]>=0.3.0",
     "fastapi>=0.110",
     "httpx<1",
     "jinja2>=3.1",
