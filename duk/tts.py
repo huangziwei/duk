@@ -1402,6 +1402,29 @@ def _number_value_to_zh(raw: str) -> str:
     return _int_to_zh(int(raw))
 
 
+# Range separators. NFKC has already folded full-width "－" to ASCII "-", so
+# only the ASCII/CJK dashes plus the spelled-out 至/到 need matching here.
+_RANGE_SEP = r"(?:[-–—~～〜]|至|到)"
+# A range endpoint must not touch another digit or dash: that shape is an
+# archive code (123-25-2), not a range.
+_RANGE_EDGE_L = r"(?<![\d\-–—.])"
+_RANGE_EDGE_R = r"(?![\d\-–—.])"
+
+
+def _range_joiner(sep: str) -> str:
+    """Dashes become a spoken 到; 至/到 are already words and stay put."""
+    return sep if sep in ("至", "到") else "到"
+
+
+def _year_to_zh(raw: str) -> str:
+    """Calendar years read digit-wise (1949 -> 一九四九).
+
+    One- and two-digit runs before 年 are durations in practice (凡39年,
+    租期99年), so those keep the value reading.
+    """
+    return _digit_seq_to_zh(raw) if len(raw) >= 3 else _int_to_zh(int(raw))
+
+
 def _normalize_numbers(text: str) -> str:
     """Rewrite Arabic-digit constructs as Chinese numerals for the TTS input.
 
@@ -1412,8 +1435,12 @@ def _normalize_numbers(text: str) -> str:
     if not text or not re.search(r"\d", text):
         return text
 
-    def year_reading(raw: str) -> str:
-        return _digit_seq_to_zh(raw)
+    # thousands separators: 1,050 -> 1050 (read as one value, not "一,零五零")
+    text = re.sub(
+        r"(?<!\d)(\d{1,3}(?:,\d{3})+)(?!\d)",
+        lambda m: m.group(1).replace(",", ""),
+        text,
+    )
 
     # 2024/05/01 or 2024-05-01 -> 二零二四年五月一日
     def _replace_slash_date(match: re.Match) -> str:
@@ -1421,7 +1448,7 @@ def _normalize_numbers(text: str) -> str:
         if not (1 <= int(month) <= 12 and 1 <= int(day) <= 31):
             return match.group(0)
         return (
-            f"{year_reading(year)}年{_int_to_zh(int(month))}月{_int_to_zh(int(day))}日"
+            f"{_year_to_zh(year)}年{_int_to_zh(int(month))}月{_int_to_zh(int(day))}日"
         )
 
     text = re.sub(
@@ -1430,10 +1457,77 @@ def _normalize_numbers(text: str) -> str:
         text,
     )
 
+    # percent ranges: 10-15% -> 百分之十到十五 (one 百分之, not two)
+    def _replace_percent_range(match: re.Match) -> str:
+        left, sep, right = match.group(1), match.group(2), match.group(3)
+        return (
+            f"百分之{_number_value_to_zh(left)}"
+            f"{_range_joiner(sep)}{_number_value_to_zh(right)}"
+        )
+
+    text = re.sub(
+        rf"{_RANGE_EDGE_L}(\d+)\s*({_RANGE_SEP})\s*(\d+)\s*%",
+        _replace_percent_range,
+        text,
+    )
+
+    # era-marked ranges: 公元前221－公元前206年 -> 公元前二二一到公元前二零六年.
+    # The left endpoint carries no 年 of its own, so the rule below cannot see it.
+    def _replace_era_range(match: re.Match) -> str:
+        era_l, left, year_l, sep, era_r, right = match.groups()
+        return (
+            f"{era_l}{_year_to_zh(left)}{year_l}"
+            f"{_range_joiner(sep)}{era_r or ''}{_year_to_zh(right)}"
+        )
+
+    text = re.sub(
+        rf"(公元前|公元后|公元|前)(\d{{2,4}})(年?)\s*({_RANGE_SEP})\s*"
+        rf"(公元前|公元后|公元|前)?(\d{{2,4}})",
+        _replace_era_range,
+        text,
+    )
+
+    # year ranges: 1368-1643年 -> 一三六八到一六四三年; 1937至1939年 keeps 至.
+    # Without this the left endpoint never sees the 年 lookahead below and
+    # falls through to a value reading (一千三百六十八).
+    def _replace_year_range(match: re.Match) -> str:
+        left, sep, right = match.group(1), match.group(2), match.group(3)
+        # 1977-78年: a two-digit tail abbreviates the left year rather than
+        # naming a duration, so it stays digit-wise.
+        right_zh = (
+            _digit_seq_to_zh(right)
+            if len(right) == 2 and len(left) == 4
+            else _year_to_zh(right)
+        )
+        return f"{_year_to_zh(left)}{_range_joiner(sep)}{right_zh}"
+
+    text = re.sub(
+        rf"{_RANGE_EDGE_L}(\d{{2,4}})\s*({_RANGE_SEP})\s*(\d{{2,4}})(?=\s*年)",
+        _replace_year_range,
+        text,
+    )
+
+    # bare year ranges in citations: 《年譜（1898-1969）》 -> 一八九八到一九六九.
+    # Both endpoints must look like calendar years and carry no counter after
+    # them, so quantity ranges (2000-3000人) keep their value reading.
+    text = re.sub(
+        rf"{_RANGE_EDGE_L}(1\d{{3}}|20\d{{2}})\s*({_RANGE_SEP})\s*"
+        rf"(1\d{{3}}|20\d{{2}}){_RANGE_EDGE_R}(?![一-鿿])",
+        _replace_year_range,
+        text,
+    )
+
     # 1984年 -> 一九八四年 (digit-wise year reading)
     text = re.sub(
         r"(?<!\d)(\d{2,4})(?=年)",
-        lambda m: year_reading(m.group(1)),
+        lambda m: _year_to_zh(m.group(1)),
+        text,
+    )
+
+    # 公元前1122 -> 公元前一一二二 (era years with no 年 of their own)
+    text = re.sub(
+        r"(?<=公元)(前)?(\d{2,4})(?!\d)",
+        lambda m: (m.group(1) or "") + _year_to_zh(m.group(2)),
         text,
     )
 
@@ -1490,12 +1584,34 @@ def _normalize_numbers(text: str) -> str:
 
     text = re.sub(r"(?<![\d/.])(\d+)/(\d+)(?![\d/.])", _replace_fraction, text)
 
-    # numeric ranges with a wave dash: 3~5 -> 三到五
-    def _replace_range(match: re.Match) -> str:
-        left, right = match.group(1), match.group(2)
-        return f"{_number_value_to_zh(left)}到{_number_value_to_zh(right)}"
+    # unit-suffixed ranges: 400亿-430亿 -> 四百亿到四百三十亿 (the repeated unit
+    # sits between the endpoints, so the bare-number rule below cannot pair them)
+    def _replace_unit_range(match: re.Match) -> str:
+        left, unit_l, sep, right, unit_r = match.groups()
+        return (
+            f"{_number_value_to_zh(left)}{unit_l}"
+            f"{_range_joiner(sep)}{_number_value_to_zh(right)}{unit_r}"
+        )
 
-    text = re.sub(r"(?<!\d)(\d+)\s*[~～〜]\s*(\d+)(?!\d)", _replace_range, text)
+    text = re.sub(
+        rf"{_RANGE_EDGE_L}(\d+)([万亿])\s*({_RANGE_SEP})\s*(\d+)([万亿])",
+        _replace_unit_range,
+        text,
+    )
+
+    # numeric ranges: 3~5 -> 三到五, 8-10月 -> 八到十月, 1000至2000 keeps 至
+    def _replace_range(match: re.Match) -> str:
+        left, sep, right = match.group(1), match.group(2), match.group(3)
+        return (
+            f"{_number_value_to_zh(left)}{_range_joiner(sep)}"
+            f"{_number_value_to_zh(right)}"
+        )
+
+    text = re.sub(
+        rf"{_RANGE_EDGE_L}(\d+)\s*({_RANGE_SEP})\s*(\d+){_RANGE_EDGE_R}",
+        _replace_range,
+        text,
+    )
 
     # digits glued to latin letters read digit-by-digit: A380 -> A三八零
     def _replace_alnum(match: re.Match) -> str:
