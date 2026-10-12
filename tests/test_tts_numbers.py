@@ -1,6 +1,6 @@
 import pytest
 
-from duk.tts import _normalize_numbers, _normalize_traditional, _nfkc_preserve_ellipsis
+from duk.tts import _nfkc_preserve_ellipsis, _normalize_numbers, _normalize_traditional
 
 
 def norm(text: str) -> str:

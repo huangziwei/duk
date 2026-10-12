@@ -7,10 +7,11 @@ import shutil
 import sys
 import time
 import unicodedata
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any
 
 import numpy as np
 import soundfile as sf
@@ -123,9 +124,9 @@ class ChapterInput:
     id: str
     title: str
     text: str
-    path: Optional[str] = None
-    headings: Tuple[str, ...] = ()
-    heading_categories: Dict[str, str] = field(default_factory=dict)
+    path: str | None = None
+    headings: tuple[str, ...] = ()
+    heading_categories: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -139,7 +140,7 @@ def sha256_str(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 
-def chapter_id_from_path(index: int, title: str, rel_path: Optional[str]) -> str:
+def chapter_id_from_path(index: int, title: str, rel_path: str | None) -> str:
     if rel_path:
         stem = Path(rel_path).stem
         if stem:
@@ -229,7 +230,7 @@ def _is_ws(ch: str) -> bool:
     return ch.isspace() or ch == SECTION_BREAK
 
 
-def _trim_span(text: str, start: int, end: int) -> Optional[Tuple[int, int]]:
+def _trim_span(text: str, start: int, end: int) -> tuple[int, int] | None:
     while start < end and _is_ws(text[start]):
         start += 1
     while end > start and _is_ws(text[end - 1]):
@@ -259,7 +260,7 @@ def _span_has_line_content(text: str, start: int, end: int) -> bool:
         if _is_ws(ch):
             continue
         category = unicodedata.category(ch)
-        if category.startswith("P") or category.startswith("S"):
+        if category.startswith(("P", "S")):
             return True
     return False
 
@@ -282,7 +283,7 @@ def _space_pause_split_indices(text: str) -> set[int]:
             end = length
         line = text[start:end]
         if line:
-            candidates: List[int] = []
+            candidates: list[int] = []
             for idx, ch in enumerate(line):
                 if ch not in (" ", "　"):
                     continue
@@ -299,8 +300,8 @@ def _space_pause_split_indices(text: str) -> set[int]:
     return splits
 
 
-def split_sentence_spans(text: str) -> List[Tuple[int, int]]:
-    spans: List[Tuple[int, int]] = []
+def split_sentence_spans(text: str) -> list[tuple[int, int]]:
+    spans: list[tuple[int, int]] = []
     space_splits = _space_pause_split_indices(text)
     start = 0
     i = 0
@@ -376,8 +377,8 @@ def split_sentence_spans(text: str) -> List[Tuple[int, int]]:
 
 def _split_long_span(
     text: str, start: int, end: int, max_chars: int
-) -> List[Tuple[int, int]]:
-    spans: List[Tuple[int, int]] = []
+) -> list[tuple[int, int]]:
+    spans: list[tuple[int, int]] = []
     i = start
     while i < end:
         j = min(end, i + max_chars)
@@ -385,8 +386,7 @@ def _split_long_span(
             split_at = -1
             for punct in _MID_PUNCT:
                 idx = text.rfind(punct, i, j)
-                if idx > split_at:
-                    split_at = idx
+                split_at = max(split_at, idx)
             if split_at > i:
                 j = split_at + 1
         span = _trim_span(text, i, j)
@@ -396,9 +396,9 @@ def _split_long_span(
     return spans
 
 
-def _collect_quote_pair_spans(text: str) -> List[Tuple[int, int]]:
-    spans: List[Tuple[int, int]] = []
-    stack: List[Tuple[str, int]] = []
+def _collect_quote_pair_spans(text: str) -> list[tuple[int, int]]:
+    spans: list[tuple[int, int]] = []
+    stack: list[tuple[str, int]] = []
     for idx, ch in enumerate(text):
         close_quotes = _OPEN_QUOTE_TO_CLOSES.get(ch)
         if close_quotes:
@@ -450,12 +450,12 @@ def _is_protectable_quote_span(text: str, start: int, end: int, max_chars: int) 
 
 
 def _split_spans_on_cut_points(
-    text: str, spans: Sequence[Tuple[int, int]], cut_points: Sequence[int]
-) -> List[Tuple[int, int]]:
+    text: str, spans: Sequence[tuple[int, int]], cut_points: Sequence[int]
+) -> list[tuple[int, int]]:
     if not spans:
         return []
     cuts = sorted(set(cut_points))
-    segmented: List[Tuple[int, int]] = []
+    segmented: list[tuple[int, int]] = []
     for start, end in spans:
         points = [start]
         for cut in cuts:
@@ -463,7 +463,7 @@ def _split_spans_on_cut_points(
                 points.append(cut)
         points.append(end)
         points = sorted(set(points))
-        local: List[Tuple[int, int]] = []
+        local: list[tuple[int, int]] = []
         for idx in range(len(points) - 1):
             span = _trim_span(text, points[idx], points[idx + 1])
             if span:
@@ -477,9 +477,9 @@ def _split_spans_on_cut_points(
 
 
 def _enclosing_quote_span_index(
-    start: int, end: int, quote_spans: Sequence[Tuple[int, int]]
-) -> Optional[int]:
-    best_idx: Optional[int] = None
+    start: int, end: int, quote_spans: Sequence[tuple[int, int]]
+) -> int | None:
+    best_idx: int | None = None
     best_len = -1
     for idx, (quote_start, quote_end) in enumerate(quote_spans):
         if quote_start <= start and end <= quote_end:
@@ -491,7 +491,7 @@ def _enclosing_quote_span_index(
 
 
 def _is_hard_chunk_boundary(
-    text: str, prev_span: Tuple[int, int], next_span: Tuple[int, int]
+    text: str, prev_span: tuple[int, int], next_span: tuple[int, int]
 ) -> bool:
     prev_start, prev_end = prev_span
     next_start, _next_end = next_span
@@ -507,16 +507,14 @@ def _is_hard_chunk_boundary(
 
 def _is_same_paragraph_gap(text: str, left_end: int, right_start: int) -> bool:
     gap = text[left_end:right_start]
-    if "\n" in gap or SECTION_BREAK in gap:
-        return False
-    return True
+    return not ("\n" in gap or SECTION_BREAK in gap)
 
 
 def _build_chunk_units(
     text: str,
-    sentence_spans: Sequence[Tuple[int, int]],
+    sentence_spans: Sequence[tuple[int, int]],
     max_chars: int,
-) -> List[Tuple[int, int, bool, bool]]:
+) -> list[tuple[int, int, bool, bool]]:
     if not sentence_spans:
         return []
 
@@ -530,7 +528,7 @@ def _build_chunk_units(
 
     cut_points = [idx for span in quote_spans for idx in span]
     segmented = _split_spans_on_cut_points(text, sentence_spans, cut_points)
-    grouped: List[List[Optional[int]]] = []
+    grouped: list[list[int | None]] = []
     for start, end in segmented:
         quote_idx = _enclosing_quote_span_index(start, end, quote_spans)
         if grouped and quote_idx is not None and grouped[-1][2] == quote_idx:
@@ -538,7 +536,7 @@ def _build_chunk_units(
             continue
         grouped.append([start, end, quote_idx])
 
-    units: List[Tuple[int, int, bool, bool]] = []
+    units: list[tuple[int, int, bool, bool]] = []
     for idx, (start, end, quote_idx) in enumerate(grouped):
         is_quote = quote_idx is not None
         adjacent_quote = False
@@ -557,10 +555,10 @@ def _build_chunk_units(
 
 def _pack_chunk_units(
     text: str,
-    units: Sequence[Tuple[int, int, bool, bool]],
+    units: Sequence[tuple[int, int, bool, bool]],
     max_chars: int,
     min_chars: int = 0,
-) -> List[Tuple[int, int]]:
+) -> list[tuple[int, int]]:
     if not units:
         return []
     if max_chars <= 0:
@@ -574,9 +572,9 @@ def _pack_chunk_units(
     # keep the historical behavior of filling each chunk toward max_chars.
     flush_threshold = min_chars if min_chars > 0 else max_chars
 
-    packed: List[Tuple[int, int]] = []
-    current_start: Optional[int] = None
-    current_end: Optional[int] = None
+    packed: list[tuple[int, int]] = []
+    current_start: int | None = None
+    current_end: int | None = None
 
     def flush() -> None:
         nonlocal current_start, current_end
@@ -634,10 +632,10 @@ def _pack_chunk_units(
 
 
 def _merge_short_chunks(
-    spans: Sequence[Tuple[int, int]],
+    spans: Sequence[tuple[int, int]],
     min_chars: int,
     max_chars: int = 0,
-) -> List[Tuple[int, int]]:
+) -> list[tuple[int, int]]:
     # min_chars is a hard floor: chunks shorter than this synthesize poorly, so
     # every below-min chunk must be merged into a neighbor. A chunk that already
     # reaches min_chars is left at the sentence level (it is never grown toward
@@ -646,8 +644,8 @@ def _merge_short_chunks(
     # rare case the two conflict.
     if min_chars <= 0:
         return list(spans)
-    merged: List[Tuple[int, int]] = []
-    pending: Optional[Tuple[int, int]] = None
+    merged: list[tuple[int, int]] = []
+    pending: tuple[int, int] | None = None
     for start, end in spans:
         if pending is None:
             pending = (start, end)
@@ -680,9 +678,9 @@ def make_chunk_spans(
     max_chars: int,
     chunk_mode: str = "chinese",
     min_chars: int = 0,
-) -> List[Tuple[int, int]]:
+) -> list[tuple[int, int]]:
     _ = chunk_mode
-    sentence_spans: List[Tuple[int, int]] = []
+    sentence_spans: list[tuple[int, int]] = []
     for sent_start, sent_end in split_sentence_spans(text):
         if max_chars > 0 and sent_end - sent_start > max_chars:
             sentence_spans.extend(
@@ -700,15 +698,15 @@ def make_chunks(
     max_chars: int,
     chunk_mode: str = "chinese",
     min_chars: int = 0,
-) -> List[str]:
+) -> list[str]:
     spans = make_chunk_spans(
         text, max_chars=max_chars, chunk_mode=chunk_mode, min_chars=min_chars
     )
     return [text[start:end] for start, end in spans]
 
 
-def _coerce_span_pairs(spans: Sequence[Sequence[int]]) -> List[Tuple[int, int]]:
-    pairs: List[Tuple[int, int]] = []
+def _coerce_span_pairs(spans: Sequence[Sequence[int]]) -> list[tuple[int, int]]:
+    pairs: list[tuple[int, int]] = []
     for span in spans:
         if not isinstance(span, (list, tuple)) or len(span) != 2:
             continue
@@ -756,9 +754,7 @@ def _is_heading_number_token(token: str) -> bool:
         return False
     if re.fullmatch(r"\d+(?:\.\d+)*", cleaned):
         return True
-    if _ROMAN_TOKEN_RE.fullmatch(cleaned):
-        return True
-    return False
+    return bool(_ROMAN_TOKEN_RE.fullmatch(cleaned))
 
 
 def _looks_like_numeric_heading(text: str) -> bool:
@@ -785,9 +781,7 @@ def _looks_like_paragraph_chunk(stripped: str) -> bool:
         return True
     if sentence_endings >= 1 and words >= 6:
         return True
-    if clause_breaks >= 2 and words >= 12:
-        return True
-    return False
+    return clause_breaks >= 2 and words >= 12
 
 
 def _looks_like_dialogue_chunk(stripped: str) -> bool:
@@ -872,9 +866,7 @@ def _looks_like_heading_chunk(chunk: str) -> bool:
     if _looks_like_paragraph_chunk(stripped):
         return False
     alpha_tokens = [token for token in tokens if any(ch.isalpha() for ch in token)]
-    if not alpha_tokens:
-        return False
-    return True
+    return bool(alpha_tokens)
 
 
 def _gap_has_symbolic_separator(gap: str) -> bool:
@@ -897,9 +889,7 @@ def _is_continuation_linebreak_gap(prev_chunk: str, gap: str) -> bool:
         return False
     if not _ends_with_continuation_punct(prev_chunk):
         return False
-    if _gap_has_symbolic_separator(gap):
-        return False
-    return True
+    return not _gap_has_symbolic_separator(gap)
 
 
 def _normalize_heading_line_key(text: str) -> str:
@@ -916,7 +906,7 @@ def _normalize_heading_line_key(text: str) -> str:
     return normalized.casefold()
 
 
-def _build_heading_line_keys(heading_lines: Optional[Sequence[str]]) -> set[str]:
+def _build_heading_line_keys(heading_lines: Sequence[str] | None) -> set[str]:
     keys: set[str] = set()
     if not heading_lines:
         return keys
@@ -927,10 +917,10 @@ def _build_heading_line_keys(heading_lines: Optional[Sequence[str]]) -> set[str]
     return keys
 
 
-def _normalize_heading_lines(values: object) -> List[str]:
+def _normalize_heading_lines(values: object) -> list[str]:
     if not isinstance(values, list):
         return []
-    out: List[str] = []
+    out: list[str] = []
     seen: set[str] = set()
     for value in values:
         heading = str(value).strip()
@@ -951,10 +941,10 @@ def _normalize_heading_category(value: object) -> str:
     return _HEADING_CATEGORY_SECTION
 
 
-def _normalize_heading_categories(values: object) -> Dict[str, str]:
+def _normalize_heading_categories(values: object) -> dict[str, str]:
     if not isinstance(values, dict):
         return {}
-    out: Dict[str, str] = {}
+    out: dict[str, str] = {}
     for raw_key, raw_value in values.items():
         key = _normalize_heading_line_key(str(raw_key))
         if not key:
@@ -970,8 +960,8 @@ def _normalize_heading_categories(values: object) -> Dict[str, str]:
 def _with_chapter_title_heading_category(
     chapter_title: str,
     heading_lines: Sequence[str],
-    heading_categories: Dict[str, str],
-) -> Dict[str, str]:
+    heading_categories: dict[str, str],
+) -> dict[str, str]:
     title_key = _normalize_heading_line_key(chapter_title)
     if not title_key:
         return dict(heading_categories)
@@ -993,8 +983,8 @@ def _heading_pause_multiplier_from_category(category: object) -> int:
 def _explicit_heading_chunk_pause_multiplier(
     chunk: str,
     heading_line_keys: set[str],
-    heading_categories: Dict[str, str],
-) -> Optional[int]:
+    heading_categories: dict[str, str],
+) -> int | None:
     if not heading_line_keys:
         return None
     lines = [line for line in chunk.splitlines() if line.strip()]
@@ -1012,17 +1002,17 @@ def _explicit_heading_chunk_pause_multiplier(
 
 def compute_chunk_pause_multipliers(
     text: str,
-    spans: Sequence[Tuple[int, int]],
-    heading_lines: Optional[Sequence[str]] = None,
-    heading_categories: Optional[Dict[str, str]] = None,
-) -> List[int]:
+    spans: Sequence[tuple[int, int]],
+    heading_lines: Sequence[str] | None = None,
+    heading_categories: dict[str, str] | None = None,
+) -> list[int]:
     if not spans:
         return []
     multipliers = [1] * len(spans)
     chunk_texts = [text[int(start) : int(end)] for start, end in spans]
     heading_line_keys = _build_heading_line_keys(heading_lines)
     heading_category_map = _normalize_heading_categories(heading_categories)
-    heading_pause_by_chunk: List[Optional[int]] = [
+    heading_pause_by_chunk: list[int | None] = [
         _explicit_heading_chunk_pause_multiplier(
             chunk,
             heading_line_keys,
@@ -1065,7 +1055,7 @@ def _legacy_pause_multipliers(
     chunk_section_breaks: object,
     chunk_count: int,
     add_chapter_boundary: bool,
-) -> List[int]:
+) -> list[int]:
     legacy = [1] * max(0, chunk_count)
     if (
         isinstance(chunk_section_breaks, list)
@@ -1083,8 +1073,8 @@ def _legacy_pause_multipliers(
 def _normalize_pause_multipliers(
     pause_multipliers: object,
     chunk_count: int,
-    fallback: Optional[Sequence[int]] = None,
-) -> List[int]:
+    fallback: Sequence[int] | None = None,
+) -> list[int]:
     if chunk_count <= 0:
         return []
     normalized = [1] * chunk_count
@@ -1143,7 +1133,7 @@ def _strip_double_quotes(text: str) -> str:
 def _strip_single_quotes(text: str) -> str:
     if not text:
         return text
-    out: List[str] = []
+    out: list[str] = []
     for idx, ch in enumerate(text):
         if ch not in _SINGLE_QUOTE_CHARS:
             out.append(ch)
@@ -1189,7 +1179,7 @@ def _strip_format_chars(text: str) -> str:
 def _strip_cjk_quotes(text: str) -> str:
     if not text:
         return text
-    out: List[str] = []
+    out: list[str] = []
     length = len(text)
     for idx, ch in enumerate(text):
         if ch not in _CJK_QUOTE_CHARS:
@@ -1251,7 +1241,7 @@ def _ensure_line_tail_punct(text: str) -> str:
     if not text or not _has_chinese(text):
         return text
     lines = text.split("\n")
-    out: List[str] = []
+    out: list[str] = []
     for line in lines:
         stripped_right = line.rstrip()
         trailing = line[len(stripped_right):]
@@ -1284,7 +1274,7 @@ def _chinese_space_to_pause(text: str, *, allow_full_stop: bool = True) -> str:
     """
     if not text:
         return text
-    out: List[str] = []
+    out: list[str] = []
     idx = 0
     length = len(text)
     while idx < length:
@@ -1324,7 +1314,7 @@ def _group_to_zh(value: int, *, is_leading_group: bool) -> str:
     """Read a 1..9999 group; 10-19 in the leading group reads 十X not 一十X."""
     if value == 0:
         return ""
-    parts: List[str] = []
+    parts: list[str] = []
     digits = [int(ch) for ch in str(value)]
     length = len(digits)
     pending_zero = False
@@ -1355,11 +1345,11 @@ def _int_to_zh(value: int) -> str:
         return "负" + _int_to_zh(-value)
     if value == 0:
         return "零"
-    groups: List[int] = []
+    groups: list[int] = []
     while value > 0:
         groups.append(value % 10_000)
         value //= 10_000
-    parts: List[str] = []
+    parts: list[str] = []
     for idx in range(len(groups) - 1, -1, -1):
         group = groups[idx]
         if group == 0:
@@ -1644,7 +1634,7 @@ def _normalize_wave_dashes_for_tts(text: str) -> str:
     if "~" not in text:
         return text
     text = re.sub(r"~{2,}", "~", text)
-    out: List[str] = []
+    out: list[str] = []
     length = len(text)
     for idx, ch in enumerate(text):
         if ch != "~":
@@ -1738,7 +1728,7 @@ def _ellipsis_pause_ms(run_length: int) -> int:
 def _resolve_output_sample_rate(
     *,
     model: Any,
-    manifest: Optional[dict] = None,
+    manifest: dict | None = None,
 ) -> int:
     if isinstance(manifest, dict):
         try:
@@ -1759,7 +1749,7 @@ def _resolve_output_sample_rate(
 def _silence_audio(duration_ms: int, sample_rate: int) -> np.ndarray:
     if duration_ms <= 0 or sample_rate <= 0:
         return np.zeros(0, dtype=np.float32)
-    sample_count = int(round(sample_rate * (duration_ms / 1000.0)))
+    sample_count = round(sample_rate * (duration_ms / 1000.0))
     if sample_count <= 0:
         sample_count = 1
     return np.zeros(sample_count, dtype=np.float32)
@@ -1780,7 +1770,7 @@ def _prepare_tts_pipeline(
     )
 
 
-def load_book_chapters(book_dir: Path) -> List[ChapterInput]:
+def load_book_chapters(book_dir: Path) -> list[ChapterInput]:
     toc_path = book_dir / "clean" / "toc.json"
     if not toc_path.exists():
         toc_path = book_dir / "toc.json"
@@ -1792,10 +1782,10 @@ def load_book_chapters(book_dir: Path) -> List[ChapterInput]:
     if not isinstance(entries, list) or not entries:
         raise ValueError("toc.json contains no chapters.")
 
-    headings_by_source_index: Dict[int, List[str]] = {}
-    headings_by_filename: Dict[str, List[str]] = {}
-    heading_categories_by_source_index: Dict[int, Dict[str, str]] = {}
-    heading_categories_by_filename: Dict[str, Dict[str, str]] = {}
+    headings_by_source_index: dict[int, list[str]] = {}
+    headings_by_filename: dict[str, list[str]] = {}
+    heading_categories_by_source_index: dict[int, dict[str, str]] = {}
+    heading_categories_by_filename: dict[str, dict[str, str]] = {}
     raw_toc_path = book_dir / "toc.json"
     if raw_toc_path.exists():
         raw_toc = json.loads(raw_toc_path.read_text(encoding="utf-8"))
@@ -1838,7 +1828,7 @@ def load_book_chapters(book_dir: Path) -> List[ChapterInput]:
                     ):
                         heading_categories_by_filename[raw_name] = normalized_categories
 
-    chapters: List[ChapterInput] = []
+    chapters: list[ChapterInput] = []
     for fallback_idx, entry in enumerate(entries, start=1):
         rel = entry.get("path")
         if not rel:
@@ -1907,14 +1897,14 @@ def atomic_write_json(path: Path, obj: Any) -> None:
     tmp.replace(path)
 
 
-def write_status(out_dir: Path, stage: str, detail: Optional[str] = None) -> None:
+def write_status(out_dir: Path, stage: str, detail: str | None = None) -> None:
     payload = {"stage": stage, "updated_unix": int(time.time())}
     if detail:
         payload["detail"] = detail
     atomic_write_json(out_dir / "status.json", payload)
 
 
-def _load_voice_map(path: Optional[Path]) -> dict:
+def _load_voice_map(path: Path | None) -> dict:
     if not path:
         return {}
     if not path.exists():
@@ -1928,7 +1918,7 @@ def _load_voice_map(path: Optional[Path]) -> dict:
     return data
 
 
-def _normalize_voice_id(value: Optional[str], default_voice: str) -> str:
+def _normalize_voice_id(value: str | None, default_voice: str) -> str:
     if value is None:
         return default_voice
     cleaned = str(value).strip()
@@ -1967,7 +1957,7 @@ def _prepare_manifest(
     pad_ms: int,
     rechunk: bool,
     min_chars: int = 0,
-) -> Tuple[dict, List[List[str]]]:
+) -> tuple[dict, list[list[str]]]:
     out_dir.mkdir(parents=True, exist_ok=True)
     chunk_root = out_dir / "chunks"
     manifest_path = out_dir / "manifest.json"
@@ -2000,7 +1990,7 @@ def _prepare_manifest(
                 "manifest.json chapter count differs from input. "
                 "Run with --rechunk to regenerate."
             )
-        chapter_chunks: List[List[str]] = []
+        chapter_chunks: list[list[str]] = []
         for chapter_idx, (ch_manifest, chapter) in enumerate(
             zip(manifest_chapters, chapters)
         ):
@@ -2054,8 +2044,8 @@ def _prepare_manifest(
         atomic_write_json(manifest_path, manifest)
         return manifest, chapter_chunks
 
-    chapter_chunks: List[List[str]] = []
-    manifest_chapters: List[dict] = []
+    chapter_chunks: list[list[str]] = []
+    manifest_chapters: list[dict] = []
     for ch in chapters:
         spans = make_chunk_spans(
             ch.text,
@@ -2142,7 +2132,7 @@ def _wav_duration_ms(path: Path) -> int:
         rate = handle.samplerate
     if rate <= 0:
         return 0
-    return int(round(frames * 1000.0 / rate))
+    return round(frames * 1000.0 / rate)
 
 
 def _write_wav(path: Path, audio: np.ndarray, sample_rate: int) -> None:
@@ -2151,7 +2141,7 @@ def _write_wav(path: Path, audio: np.ndarray, sample_rate: int) -> None:
 
 
 def build_concat_file(
-    segment_paths: List[Path], concat_path: Path, base_dir: Path
+    segment_paths: list[Path], concat_path: Path, base_dir: Path
 ) -> None:
     lines = []
     for p in segment_paths:
@@ -2161,7 +2151,7 @@ def build_concat_file(
 
 
 def build_chapters_ffmeta(
-    chapters: Sequence[Tuple[str, int]], ffmeta_path: Path
+    chapters: Sequence[tuple[str, int]], ffmeta_path: Path
 ) -> None:
     def _ffmeta_escape(value: str) -> str:
         return (
@@ -2189,7 +2179,7 @@ def build_chapters_ffmeta(
 
 def chunk_book(
     book_dir: Path,
-    out_dir: Optional[Path] = None,
+    out_dir: Path | None = None,
     voice: str = "voice",
     max_chars: int = 0,
     pad_ms: int = 350,
@@ -2216,13 +2206,13 @@ def chunk_book(
 def synthesize_book(
     book_dir: Path,
     voice: VoiceConfig,
-    out_dir: Optional[Path] = None,
+    out_dir: Path | None = None,
     max_chars: int = 0,
     pad_ms: int = 350,
     rechunk: bool = False,
-    voice_map_path: Optional[Path] = None,
-    base_dir: Optional[Path] = None,
-    only_chapter_ids: Optional[set[str]] = None,
+    voice_map_path: Path | None = None,
+    base_dir: Path | None = None,
+    only_chapter_ids: set[str] | None = None,
     min_chars: int = 0,
 ) -> int:
     chapters = load_book_chapters(book_dir)
@@ -2263,8 +2253,8 @@ def synthesize_book(
     if voice_map:
         default_voice = _normalize_voice_id(voice_map.get("default"), default_voice)
 
-    chapter_voice_map: Dict[str, str] = {}
-    voice_overrides: Dict[str, str] = {}
+    chapter_voice_map: dict[str, str] = {}
+    voice_overrides: dict[str, str] = {}
     raw_overrides = voice_map.get("chapters", {}) if voice_map else {}
     for entry in manifest.get("chapters", []):
         chapter_id = entry.get("id") or "chapter"
@@ -2284,7 +2274,7 @@ def synthesize_book(
     manifest["chapter_pad_ms"] = int(pad_ms) * _CHAPTER_PAD_MULT
     atomic_write_json(manifest_path, manifest)
 
-    voice_configs: Dict[str, VoiceConfig] = {}
+    voice_configs: dict[str, VoiceConfig] = {}
     try:
         for voice_id in sorted(set(chapter_voice_map.values())):
             if voice_id == voice.name:
@@ -2327,7 +2317,7 @@ def synthesize_book(
         TimeRemainingColumn(),
     )
 
-    segment_paths: List[Path] = []
+    segment_paths: list[Path] = []
 
     with progress:
         overall_task = progress.add_task("Total", total=total_chunks)
@@ -2412,7 +2402,7 @@ def synthesize_book(
                     _write_wav(seg_path, audio, sample_rate)
                     segment_paths.append(seg_path)
 
-                    dms = int(round(audio.shape[0] * 1000.0 / sample_rate))
+                    dms = round(audio.shape[0] * 1000.0 / sample_rate)
                     ch_entry["durations_ms"][chunk_idx - 1] = dms
                     if manifest.get("sample_rate") != sample_rate:
                         manifest["sample_rate"] = sample_rate
@@ -2441,7 +2431,7 @@ def synthesize_book(
                     _write_wav(seg_path, audio, sample_rate)
                     segment_paths.append(seg_path)
 
-                    dms = int(round(audio.shape[0] * 1000.0 / sample_rate))
+                    dms = round(audio.shape[0] * 1000.0 / sample_rate)
                     ch_entry["durations_ms"][chunk_idx - 1] = dms
                     if manifest.get("sample_rate") != sample_rate:
                         manifest["sample_rate"] = sample_rate
@@ -2475,7 +2465,7 @@ def synthesize_book(
 
                 audio = audio.flatten()
                 if pad_ms_total > 0:
-                    pad_samples = int(round(sample_rate * (pad_ms_total / 1000.0)))
+                    pad_samples = round(sample_rate * (pad_ms_total / 1000.0))
                     if pad_samples > 0:
                         pad = np.zeros(pad_samples, dtype=audio.dtype)
                         audio = np.concatenate([audio, pad])
@@ -2483,7 +2473,7 @@ def synthesize_book(
                 _write_wav(seg_path, audio, sample_rate)
                 segment_paths.append(seg_path)
 
-                dms = int(round(audio.shape[0] * 1000.0 / sample_rate))
+                dms = round(audio.shape[0] * 1000.0 / sample_rate)
                 ch_entry["durations_ms"][chunk_idx - 1] = dms
                 if manifest.get("sample_rate") != sample_rate:
                     manifest["sample_rate"] = sample_rate
@@ -2494,7 +2484,7 @@ def synthesize_book(
 
     build_concat_file(segment_paths, concat_path, base_dir=out_dir)
 
-    chapter_meta: List[Tuple[str, int]] = []
+    chapter_meta: list[tuple[str, int]] = []
     for ch_entry in manifest["chapters"]:
         title = ch_entry.get("title") or ch_entry.get("id") or "Chapter"
         durations = ch_entry.get("durations_ms", [])
@@ -2509,12 +2499,12 @@ def synthesize_book(
 def synthesize_book_sample(
     book_dir: Path,
     voice: VoiceConfig,
-    out_dir: Optional[Path] = None,
+    out_dir: Path | None = None,
     max_chars: int = 0,
     pad_ms: int = 350,
     rechunk: bool = False,
-    voice_map_path: Optional[Path] = None,
-    base_dir: Optional[Path] = None,
+    voice_map_path: Path | None = None,
+    base_dir: Path | None = None,
     min_chars: int = 0,
 ) -> int:
     chapters = load_book_chapters(book_dir)
@@ -2563,9 +2553,9 @@ def synthesize_chunk(
     out_dir: Path,
     chapter_id: str,
     chunk_index: int,
-    voice: Optional[str] = None,
-    voice_map_path: Optional[Path] = None,
-    base_dir: Optional[Path] = None,
+    voice: str | None = None,
+    voice_map_path: Path | None = None,
+    base_dir: Path | None = None,
 ) -> dict:
     if base_dir is None:
         base_dir = Path.cwd()
@@ -2606,7 +2596,7 @@ def synthesize_chunk(
     if chunk_index >= chunk_count:
         raise ValueError(f"chunk_index out of range for {chapter_id}")
 
-    chunk_text: Optional[str] = None
+    chunk_text: str | None = None
     if chunks and chunk_index < len(chunks):
         chunk_text = str(chunks[chunk_index])
     if chunk_text is None:
@@ -2716,7 +2706,7 @@ def synthesize_chunk(
         silence_ms = _ellipsis_pause_ms(ellipsis_run) + pad_ms_total
         audio = _silence_audio(silence_ms, sample_rate)
         _write_wav(seg_path, audio, sample_rate)
-        dms = int(round(audio.shape[0] * 1000.0 / sample_rate))
+        dms = round(audio.shape[0] * 1000.0 / sample_rate)
         durations[chunk_index] = dms
         if manifest.get("sample_rate") != sample_rate:
             manifest["sample_rate"] = sample_rate
@@ -2741,13 +2731,13 @@ def synthesize_chunk(
     audio = audio.flatten()
 
     if pad_ms_total > 0:
-        pad_samples = int(round(sample_rate * (pad_ms_total / 1000.0)))
+        pad_samples = round(sample_rate * (pad_ms_total / 1000.0))
         if pad_samples > 0:
             pad = np.zeros(pad_samples, dtype=audio.dtype)
             audio = np.concatenate([audio, pad])
 
     _write_wav(seg_path, audio, sample_rate)
-    dms = int(round(audio.shape[0] * 1000.0 / sample_rate))
+    dms = round(audio.shape[0] * 1000.0 / sample_rate)
     durations[chunk_index] = dms
     if manifest.get("sample_rate") != sample_rate:
         manifest["sample_rate"] = sample_rate

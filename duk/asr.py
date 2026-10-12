@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
-
 
 _LANGUAGE_MAP = {
     "chinese": "zh",
@@ -36,7 +34,7 @@ _MODEL_ALIASES = {
 }
 
 
-def normalize_language(value: Optional[str]) -> Optional[str]:
+def normalize_language(value: str | None) -> str | None:
     if value is None:
         return None
     cleaned = str(value).strip()
@@ -46,7 +44,7 @@ def normalize_language(value: Optional[str]) -> Optional[str]:
     return _LANGUAGE_MAP.get(lowered, lowered)
 
 
-def resolve_model_name(model_name: Optional[str]) -> str:
+def resolve_model_name(model_name: str | None) -> str:
     cleaned = str(model_name or "").strip()
     if not cleaned:
         return DEFAULT_WHISPER_MODEL
@@ -56,9 +54,9 @@ def resolve_model_name(model_name: Optional[str]) -> str:
 def transcribe_audio(
     audio_path: Path,
     model_name: str = DEFAULT_WHISPER_MODEL,
-    language: Optional[str] = None,
-    device: Optional[str] = None,
-    initial_prompt: Optional[str] = None,
+    language: str | None = None,
+    device: str | None = None,
+    initial_prompt: str | None = None,
 ) -> str:
     """Transcribe a clip with mlx-whisper; returns the raw transcript text."""
     _ = device  # MLX always runs on the unified-memory GPU.

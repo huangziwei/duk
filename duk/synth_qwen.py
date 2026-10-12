@@ -25,7 +25,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Tuple
 
 import mlx.core as mx
 import numpy as np
@@ -156,8 +155,8 @@ def generate_chunk(
     text: str,
     voice: VoiceConfig,
     *,
-    seed: Optional[int] = None,
-) -> Tuple[np.ndarray, int]:
+    seed: int | None = None,
+) -> tuple[np.ndarray, int]:
     """Synthesize one chunk; returns (audio_float32_1d, sample_rate)."""
     cleaned = text.strip()
     if not cleaned:

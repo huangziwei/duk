@@ -42,7 +42,7 @@ def test_plan_chapter_splits_balances_parts() -> None:
 
 
 def test_auto_split_count() -> None:
-    eight_hours_ms = int(8 * 3600 * 1000)
+    eight_hours_ms = 8 * 3600 * 1000
     assert merge._auto_split_count(eight_hours_ms, 8.0) == 1
     assert merge._auto_split_count(eight_hours_ms + 1, 8.0) == 2
 

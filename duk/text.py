@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
-
 
 SECTION_BREAK = ""
 

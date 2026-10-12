@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 DEFAULT_LANGUAGE = "Chinese"
 VOICE_DIRNAME = "voices"
@@ -13,9 +12,9 @@ VOICE_DIRNAME = "voices"
 class VoiceConfig:
     name: str
     ref_audio: str
-    ref_text: Optional[str]
+    ref_text: str | None
     language: str = DEFAULT_LANGUAGE
-    gender: Optional[str] = None
+    gender: str | None = None
 
     @property
     def audio_path(self) -> Path:
@@ -82,7 +81,7 @@ def write_voice_config(config: VoiceConfig, path: Path) -> None:
     )
 
 
-def coerce_voice_name(raw: Optional[str], source_name: str) -> str:
+def coerce_voice_name(raw: str | None, source_name: str) -> str:
     value = raw or source_name
     base = Path(value).name.strip()
     if not base:
@@ -95,9 +94,9 @@ def coerce_voice_name(raw: Optional[str], source_name: str) -> str:
 
 
 def _read_voice_text(
-    voice_text: Optional[str],
-    voice_text_path: Optional[Path],
-) -> Optional[str]:
+    voice_text: str | None,
+    voice_text_path: Path | None,
+) -> str | None:
     if voice_text_path:
         text = voice_text_path.read_text(encoding="utf-8").strip()
         return text or None
@@ -110,9 +109,9 @@ def _read_voice_text(
 def resolve_voice_config(
     voice: str,
     base_dir: Path,
-    voice_text: Optional[str] = None,
-    voice_text_path: Optional[Path] = None,
-    language: Optional[str] = None,
+    voice_text: str | None = None,
+    voice_text_path: Path | None = None,
+    language: str | None = None,
 ) -> VoiceConfig:
     if not voice:
         raise ValueError("Voice is required for synthesis.")

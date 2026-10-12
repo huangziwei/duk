@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import json
-import os
 import math
+import os
 import shutil
 import subprocess
 import sys
 import wave
+from collections.abc import Sequence
 from pathlib import Path
-from typing import List, Sequence, Tuple
 
 
 def _require_ffmpeg() -> None:
@@ -38,8 +38,7 @@ def _cover_average_rgb(cover_path: Path) -> tuple[int, int, int] | None:
     try:
         proc = subprocess.run(
             cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             check=True,
         )
     except (OSError, subprocess.CalledProcessError):
@@ -52,7 +51,7 @@ def _cover_average_rgb(cover_path: Path) -> tuple[int, int, int] | None:
 
 
 def _clamp_channel(value: float) -> int:
-    return max(0, min(255, int(round(value))))
+    return max(0, min(255, round(value)))
 
 
 def _mix_channel(base: int, target: int, amount: float) -> int:
@@ -228,7 +227,7 @@ def _parse_timecode(value: str) -> int:
         total = (int(hours) * 3600.0) + (int(minutes) * 60.0) + secs
     except ValueError:
         return 0
-    return int(round(total * 1000.0))
+    return round(total * 1000.0)
 
 
 def _write_progress(
@@ -261,7 +260,7 @@ def _wav_duration_ms(path: Path) -> int:
         rate = wf.getframerate()
     if rate <= 0:
         return 0
-    return int(round(frames * 1000.0 / rate))
+    return round(frames * 1000.0 / rate)
 
 
 def _resolve_chunk_count(entry: dict, chapter_dir: Path) -> int:
@@ -285,7 +284,7 @@ def _duration_hint_ms(durations: Sequence[object], idx: int) -> int | None:
 
 
 def _build_concat_file(
-    segment_paths: List[Path], concat_path: Path, base_dir: Path
+    segment_paths: list[Path], concat_path: Path, base_dir: Path
 ) -> None:
     lines = []
     for path in segment_paths:
@@ -295,7 +294,7 @@ def _build_concat_file(
 
 
 def _build_chapters_ffmeta(
-    chapters: Sequence[Tuple[str, int]],
+    chapters: Sequence[tuple[str, int]],
     ffmeta_path: Path,
     metadata: dict | None = None,
 ) -> None:
@@ -329,9 +328,9 @@ def _ensure_merge_inputs(tts_dir: Path, metadata: dict) -> tuple[Path, Path, int
         raise ValueError("manifest.json contains no chapters.")
 
     seg_root = tts_dir / "segments"
-    segment_paths: List[Path] = []
-    chapter_meta: List[Tuple[str, int]] = []
-    missing: List[Path] = []
+    segment_paths: list[Path] = []
+    chapter_meta: list[tuple[str, int]] = []
+    missing: list[Path] = []
     total_ms = 0
 
     for entry in chapters:
@@ -381,7 +380,7 @@ def _ensure_merge_inputs(tts_dir: Path, metadata: dict) -> tuple[Path, Path, int
     return concat_path, chapters_path, total_ms
 
 
-def _load_chapter_segments(tts_dir: Path) -> tuple[List[dict], int]:
+def _load_chapter_segments(tts_dir: Path) -> tuple[list[dict], int]:
     manifest_path = tts_dir / "manifest.json"
     if not manifest_path.exists():
         raise FileNotFoundError(f"Missing manifest: {manifest_path}")
@@ -391,7 +390,7 @@ def _load_chapter_segments(tts_dir: Path) -> tuple[List[dict], int]:
         raise ValueError("manifest.json contains no chapters.")
 
     seg_root = tts_dir / "segments"
-    chapter_segments: List[dict] = []
+    chapter_segments: list[dict] = []
     first_missing: Path | None = None
     total_ms = 0
 
@@ -408,7 +407,7 @@ def _load_chapter_segments(tts_dir: Path) -> tuple[List[dict], int]:
         durations = entry.get("durations_ms")
         durations_list = durations if isinstance(durations, list) else []
         chapter_total_ms = 0
-        segments: List[Path] = []
+        segments: list[Path] = []
 
         for idx in range(1, chunk_count + 1):
             seg_path = chapter_dir / f"{idx:06d}.wav"
@@ -451,14 +450,14 @@ def _load_chapter_segments(tts_dir: Path) -> tuple[List[dict], int]:
     return chapter_segments, int(total_ms)
 
 
-def _plan_chapter_splits(chapters: Sequence[dict], parts: int) -> List[List[dict]]:
+def _plan_chapter_splits(chapters: Sequence[dict], parts: int) -> list[list[dict]]:
     if parts <= 1 or not chapters:
         return [list(chapters)]
     total_ms = sum(int(entry.get("duration_ms") or 0) for entry in chapters)
     remaining_ms = total_ms
     remaining_parts = parts
-    planned: List[List[dict]] = []
-    current: List[dict] = []
+    planned: list[list[dict]] = []
+    current: list[dict] = []
     current_ms = 0
 
     for idx, entry in enumerate(chapters):
@@ -520,7 +519,7 @@ def _auto_split_count(total_ms: int, hours: float) -> int:
         return 1
     if total_ms <= target_ms:
         return 1
-    return int(math.ceil(total_ms / target_ms))
+    return math.ceil(total_ms / target_ms)
 
 
 def _build_part_inputs(
@@ -529,8 +528,8 @@ def _build_part_inputs(
     tts_dir: Path,
     metadata: dict,
 ) -> tuple[Path, Path, int]:
-    segment_paths: List[Path] = []
-    chapter_meta: List[Tuple[str, int]] = []
+    segment_paths: list[Path] = []
+    chapter_meta: list[tuple[str, int]] = []
     total_ms = 0
     for entry in chapters:
         segment_paths.extend(entry.get("segments") or [])
@@ -671,7 +670,7 @@ def merge_book(
         )
         if progress_path is not None:
             return _run_ffmpeg_with_progress(cmd, progress_path, total_ms)
-        proc = subprocess.run(cmd, cwd=str(tts_dir))
+        proc = subprocess.run(cmd, cwd=str(tts_dir), check=False)
         return int(proc.returncode)
 
     parts = _plan_chapter_splits(chapters, split_count)
@@ -706,9 +705,9 @@ def merge_book(
                 part_total=len(parts),
             )
         else:
-            proc = subprocess.run(cmd, cwd=str(tts_dir))
+            proc = subprocess.run(cmd, cwd=str(tts_dir), check=False)
             code = int(proc.returncode)
         if code != 0:
             return code
     return 0
-AUTO_SPLIT_HOURS = 10.0
+AUTO_SPLIT_HOURS = 12.0

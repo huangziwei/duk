@@ -117,7 +117,7 @@ def normalize_clone_wav(
         "pcm_s16le",
         str(tmp_path),
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or "").strip()
         if detail:

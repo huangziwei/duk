@@ -42,7 +42,9 @@ def test_normalize_clone_wav_runs_ffmpeg_volume_filter(
     def fake_measure(_: Path) -> tuple[float, float]:
         return -20.0, -4.0
 
-    def fake_run(cmd: list[str], capture_output: bool, text: bool) -> SimpleNamespace:
+    def fake_run(
+        cmd: list[str], capture_output: bool, text: bool, check: bool
+    ) -> SimpleNamespace:
         commands.append(cmd)
         Path(cmd[-1]).write_bytes(b"RIFFOUT")
         return SimpleNamespace(returncode=0, stderr="", stdout="")

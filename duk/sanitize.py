@@ -5,10 +5,10 @@ import re
 import shutil
 import time
 import warnings
+from collections.abc import Iterable
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
 
 from . import tts as tts_util
 from .text import SECTION_BREAK, normalize_section_breaks, read_clean_text
@@ -20,7 +20,7 @@ RULE_KEYS = (
 )
 RULES_FILENAME = "sanitize-rules.json"
 
-DEFAULT_RULES: Dict[str, List[str]] = {
+DEFAULT_RULES: dict[str, list[str]] = {
     "drop_chapter_title_patterns": [
         r"^目录$",
         r"^目錄$",
@@ -175,10 +175,10 @@ _VOWELS = set("aeiouyāīūṛṝḷḹ")
 
 @dataclass(frozen=True)
 class Ruleset:
-    drop_chapter_title_patterns: List[str]
-    section_cutoff_patterns: List[str]
-    remove_patterns: List[str]
-    source_path: Optional[Path] = None
+    drop_chapter_title_patterns: list[str]
+    section_cutoff_patterns: list[str]
+    remove_patterns: list[str]
+    source_path: Path | None = None
     replace_defaults: bool = False
 
 
@@ -196,7 +196,7 @@ class ChapterResult:
 
 
 def load_rules(
-    rules_path: Optional[Path] = None,
+    rules_path: Path | None = None,
 ) -> Ruleset:
     rules = deepcopy(DEFAULT_RULES)
     source_path = None
@@ -245,7 +245,7 @@ def format_title_chapter(metadata: dict) -> str:
     if author_line:
         author_line = f"by {author_line}"
 
-    lines: List[str] = []
+    lines: list[str] = []
     for block in (headline, year, author_line):
         if not block:
             continue
@@ -256,8 +256,8 @@ def format_title_chapter(metadata: dict) -> str:
     return "\n".join(lines).strip()
 
 
-def compile_patterns(patterns: Iterable[str]) -> List[re.Pattern]:
-    compiled: List[re.Pattern] = []
+def compile_patterns(patterns: Iterable[str]) -> list[re.Pattern]:
+    compiled: list[re.Pattern] = []
     for pattern in patterns:
         with warnings.catch_warnings():
             warnings.filterwarnings(
@@ -287,7 +287,7 @@ def _is_all_caps_word(word: str) -> bool:
 
 def _titlecase_token(word: str) -> str:
     parts = re.split(r"([\-'’])", word)
-    out: List[str] = []
+    out: list[str] = []
     for part in parts:
         if part in {"-", "'", "’"}:
             out.append(part)
@@ -307,8 +307,8 @@ def _variant_score(word: str) -> int:
     return 1
 
 
-def _build_case_map(text: str, extra_words: Iterable[str]) -> Dict[str, str]:
-    variants: Dict[str, Dict[str, int]] = {}
+def _build_case_map(text: str, extra_words: Iterable[str]) -> dict[str, str]:
+    variants: dict[str, dict[str, int]] = {}
     for source in [text, *extra_words]:
         for match in _WORD_RE.finditer(source):
             word = match.group(0)
@@ -317,7 +317,7 @@ def _build_case_map(text: str, extra_words: Iterable[str]) -> Dict[str, str]:
             key = word.lower()
             bucket = variants.setdefault(key, {})
             bucket[word] = bucket.get(word, 0) + 1
-    case_map: Dict[str, str] = {}
+    case_map: dict[str, str] = {}
     for key, bucket in variants.items():
         best = max(bucket.items(), key=lambda item: (item[1], _variant_score(item[0])))
         case_map[key] = best[0]
@@ -341,13 +341,11 @@ def _should_preserve_caps_word(word: str, lower: str) -> bool:
         return True
     if len(word) <= 3:
         return True
-    if len(word) <= 4 and not any(ch in _VOWELS for ch in lower):
-        return True
-    return False
+    return len(word) <= 4 and not any(ch in _VOWELS for ch in lower)
 
 
 def _normalize_small_caps_word(
-    word: str, case_map: Dict[str, str], is_first: bool
+    word: str, case_map: dict[str, str], is_first: bool
 ) -> str:
     lower = word.lower()
     mapped = case_map.get(lower)
@@ -361,7 +359,7 @@ def _normalize_small_caps_word(
 
 
 def _normalize_small_caps_paragraph(
-    paragraph: str, case_map: Dict[str, str]
+    paragraph: str, case_map: dict[str, str]
 ) -> str:
     if not re.search(r"[a-z]", paragraph):
         return paragraph
@@ -369,7 +367,7 @@ def _normalize_small_caps_paragraph(
     if not matches:
         return paragraph
 
-    run: List[re.Match] = []
+    run: list[re.Match] = []
     for match in matches:
         word = match.group(0)
         if not _is_all_caps_word(word):
@@ -397,7 +395,7 @@ def _normalize_small_caps_paragraph(
     if not has_signal:
         return paragraph
 
-    pieces: List[str] = []
+    pieces: list[str] = []
     last = 0
     for idx, match in enumerate(run):
         pieces.append(paragraph[last:match.start()])
@@ -411,13 +409,13 @@ def _normalize_small_caps_paragraph(
 
 
 def normalize_small_caps(
-    text: str, extra_words: Optional[Iterable[str]] = None
+    text: str, extra_words: Iterable[str] | None = None
 ) -> str:
     if not text:
         return text
     case_map = _build_case_map(text, extra_words or [])
     blocks = re.split(r"\n\s*\n", text)
-    normalized: List[str] = []
+    normalized: list[str] = []
     for block in blocks:
         normalized.append(_normalize_small_caps_paragraph(block, case_map))
     return "\n\n".join(normalized)
@@ -434,7 +432,7 @@ def _is_all_caps_block(text: str) -> bool:
 
 
 def _normalize_all_caps_title_word(
-    word: str, case_map: Dict[str, str], is_first: bool
+    word: str, case_map: dict[str, str], is_first: bool
 ) -> str:
     lower = word.lower()
     mapped = case_map.get(lower)
@@ -448,7 +446,7 @@ def _normalize_all_caps_title_word(
 
 
 def _normalize_all_caps_sentence_word(
-    word: str, case_map: Dict[str, str], is_first: bool
+    word: str, case_map: dict[str, str], is_first: bool
 ) -> str:
     lower = word.lower()
     mapped = case_map.get(lower)
@@ -470,7 +468,7 @@ def _normalize_heading_line_key(text: str) -> str:
 
 def _build_heading_line_keys(
     chapter_title: str,
-    heading_lines: Optional[Iterable[str]],
+    heading_lines: Iterable[str] | None,
 ) -> set[str]:
     _ = chapter_title
     keys: set[str] = set()
@@ -484,9 +482,9 @@ def _build_heading_line_keys(
 
 
 def _normalize_all_caps_title_line(
-    line: str, matches: List[re.Match], case_map: Dict[str, str]
+    line: str, matches: list[re.Match], case_map: dict[str, str]
 ) -> str:
-    pieces: List[str] = []
+    pieces: list[str] = []
     last = 0
     for idx, match in enumerate(matches):
         pieces.append(line[last:match.start()])
@@ -500,9 +498,9 @@ def _normalize_all_caps_title_line(
 
 
 def _normalize_all_caps_sentence_line(
-    line: str, matches: List[re.Match], case_map: Dict[str, str]
+    line: str, matches: list[re.Match], case_map: dict[str, str]
 ) -> str:
-    pieces: List[str] = []
+    pieces: list[str] = []
     last = 0
     sentence_start = True
     for idx, match in enumerate(matches):
@@ -520,7 +518,7 @@ def _normalize_all_caps_sentence_line(
 
 
 def _normalize_all_caps_line(
-    line: str, case_map: Dict[str, str], heading_line_keys: set[str]
+    line: str, case_map: dict[str, str], heading_line_keys: set[str]
 ) -> str:
     if not _is_all_caps_block(line):
         return line
@@ -535,16 +533,16 @@ def _normalize_all_caps_line(
 
 def normalize_all_caps(
     text: str,
-    extra_words: Optional[Iterable[str]] = None,
+    extra_words: Iterable[str] | None = None,
     chapter_title: str = "",
-    heading_lines: Optional[Iterable[str]] = None,
+    heading_lines: Iterable[str] | None = None,
 ) -> str:
     if not text:
         return text
     case_map = _build_case_map(text, extra_words or [])
     heading_line_keys = _build_heading_line_keys(chapter_title, heading_lines)
     blocks = re.split(r"\n\s*\n", text)
-    normalized: List[str] = []
+    normalized: list[str] = []
     for block in blocks:
         if "\n" in block:
             lines = block.split("\n")
@@ -564,8 +562,8 @@ def normalize_all_caps(
     return "\n\n".join(normalized)
 
 
-def _case_context_words(metadata: dict, chapter_title: str) -> List[str]:
-    extra: List[str] = []
+def _case_context_words(metadata: dict, chapter_title: str) -> list[str]:
+    extra: list[str] = []
     title = str(metadata.get("title") or "").strip() if isinstance(metadata, dict) else ""
     if title:
         extra.append(title)
@@ -580,16 +578,16 @@ def _case_context_words(metadata: dict, chapter_title: str) -> List[str]:
     return extra
 
 
-def _chapter_heading_lines(entry: dict, chapter_title: str) -> List[str]:
+def _chapter_heading_lines(entry: dict, chapter_title: str) -> list[str]:
     _ = chapter_title
-    items: List[str] = []
+    items: list[str] = []
     raw = entry.get("headings") if isinstance(entry, dict) else None
     if isinstance(raw, list):
         for value in raw:
             heading = str(value).strip()
             if heading:
                 items.append(heading)
-    out: List[str] = []
+    out: list[str] = []
     seen: set[str] = set()
     for item in items:
         key = _normalize_heading_line_key(item)
@@ -600,11 +598,11 @@ def _chapter_heading_lines(entry: dict, chapter_title: str) -> List[str]:
     return out
 
 
-def _chapter_heading_categories(entry: dict) -> Dict[str, str]:
+def _chapter_heading_categories(entry: dict) -> dict[str, str]:
     raw = entry.get("heading_categories") if isinstance(entry, dict) else None
     if not isinstance(raw, dict):
         return {}
-    out: Dict[str, str] = {}
+    out: dict[str, str] = {}
     for raw_key, raw_value in raw.items():
         key = _normalize_heading_line_key(str(raw_key))
         if not key:
@@ -626,7 +624,7 @@ def _collapse_dialogue_continuation_breaks(text: str) -> str:
     if len(blocks) <= 1:
         return text
 
-    out: List[str] = [blocks[0]]
+    out: list[str] = [blocks[0]]
     for block in blocks[1:]:
         prev = out[-1].rstrip()
         if (
@@ -665,8 +663,8 @@ def normalize_text(text: str) -> str:
 
 
 def apply_section_cutoff(
-    text: str, patterns: List[re.Pattern]
-) -> Tuple[str, str]:
+    text: str, patterns: list[re.Pattern]
+) -> tuple[str, str]:
     for pattern in patterns:
         match = pattern.search(text)
         if match:
@@ -675,9 +673,9 @@ def apply_section_cutoff(
 
 
 def apply_remove_patterns(
-    text: str, patterns: List[re.Pattern]
-) -> Tuple[str, Dict[str, int]]:
-    stats: Dict[str, int] = {}
+    text: str, patterns: list[re.Pattern]
+) -> tuple[str, dict[str, int]]:
+    stats: dict[str, int] = {}
     for pattern in patterns:
         text, count = pattern.subn("", text)
         stats[pattern.pattern] = stats.get(pattern.pattern, 0) + count
@@ -685,7 +683,7 @@ def apply_remove_patterns(
 
 
 def should_drop_title(
-    title: str, patterns: List[re.Pattern]
+    title: str, patterns: list[re.Pattern]
 ) -> str:
     for pattern in patterns:
         if pattern.search(title):
@@ -695,7 +693,7 @@ def should_drop_title(
 
 def sanitize_book(
     book_dir: Path,
-    rules_path: Optional[Path] = None,
+    rules_path: Path | None = None,
     overwrite: bool = False,
 ) -> int:
     toc_path = book_dir / "toc.json"
@@ -734,10 +732,10 @@ def sanitize_book(
         raise ValueError("Invalid toc.json: chapters must be a list.")
 
     clean_dir.mkdir(parents=True, exist_ok=True)
-    report_entries: List[ChapterResult] = []
-    pattern_stats: Dict[str, int] = {}
+    report_entries: list[ChapterResult] = []
+    pattern_stats: dict[str, int] = {}
     dropped = 0
-    clean_entries: List[dict] = []
+    clean_entries: list[dict] = []
 
 
     for entry in chapters:
@@ -920,7 +918,7 @@ def _write_json(path: Path, payload: dict) -> None:
     )
 
 
-def _reindex_clean_entries(entries: List[dict]) -> None:
+def _reindex_clean_entries(entries: list[dict]) -> None:
     for idx, entry in enumerate(entries, start=1):
         entry["index"] = idx
 
@@ -941,8 +939,8 @@ def _update_report(
     dropped: bool,
     drop_reason: str = "",
     cutoff_reason: str = "",
-    raw_chars: Optional[int] = None,
-    clean_chars: Optional[int] = None,
+    raw_chars: int | None = None,
+    clean_chars: int | None = None,
 ) -> None:
     report_path = book_dir / "clean" / "report.json"
     if not report_path.exists():
@@ -1007,7 +1005,7 @@ def _drop_tts_chapter(book_dir: Path, chapter_id: str) -> None:
 def drop_chapter(
     book_dir: Path,
     title: str,
-    chapter_index: Optional[int] = None,
+    chapter_index: int | None = None,
 ) -> bool:
     clean_toc_path = book_dir / "clean" / "toc.json"
     if not clean_toc_path.exists():
@@ -1066,8 +1064,8 @@ def drop_chapter(
 def restore_chapter(
     book_dir: Path,
     title: str,
-    chapter_index: Optional[int] = None,
-    rules_path: Optional[Path] = None,
+    chapter_index: int | None = None,
+    rules_path: Path | None = None,
 ) -> bool:
     toc_path = book_dir / "toc.json"
     if not toc_path.exists():

@@ -36,3 +36,25 @@ environments = ["sys_platform == 'darwin' and platform_machine == 'arm64'"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["duk"]
+
+[tool.ruff.lint]
+# Rule selection stays at ruff's default so newly-promoted rules still surface.
+ignore = [
+  # Blind `except Exception` is the intended shape here: CLI subcommands turn
+  # any failure into an exit code, and optional components, file reads and
+  # metadata lookups fall back rather than propagate.
+  "BLE001",
+  # Shape checks on parsed JSON report malformed *data*, so ValueError is the
+  # accurate exception; TypeError would imply a caller passed the wrong type.
+  "TRY004",
+]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency markers are evaluated once at import by design.
+extend-immutable-calls = [
+  "fastapi.Body",
+  "fastapi.Depends",
+  "fastapi.File",
+  "fastapi.Form",
+  "fastapi.Query",
+]
